@@ -4,8 +4,7 @@ FROM python:3.12-slim-bookworm
 # Set environment variables for non-interactive installations
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install uv (from official binary) - consistent with your mcpo Dockerfile context
-# Placing it in /usr/local/bin for standard practice
+# Install uv (from official binary)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 # Install build essentials, git, curl, ca-certificates (needed for Node.js PPA and compiling some modules)
@@ -16,23 +15,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js v22.x and npm via NodeSource - consistent with your mcpo Dockerfile context
+# Install Node.js v22.x and npm via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pnpm globally - recommended for metamcp as per its README
+# Install pnpm globally
 RUN npm install -g pnpm
 
-# Install mcpo (Python package from PyPI)
-# We are installing it as a package here, assuming your repo does not contain mcpo source.
-# If your setup is to build mcpo from local source, you'd adjust this.
+# --- Python Virtual Environment for mcpo ---
+# Set /app as the working directory for mcpo related setup
+WORKDIR /app
+# Define the virtual environment location
+ENV VIRTUAL_ENV=/app/.venv
+# Create the virtual environment using uv
+RUN uv venv "$VIRTUAL_ENV"
+# Add the virtual environment's bin directory to the PATH
+# This ensures that subsequent `uv` commands and `mcpo` itself run within this venv.
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Install mcpo into the newly created virtual environment
 RUN uv pip install mcpo
 
 # --- Start of Metamcp specific setup ---
 
-# Clone metamcp repository into a designated source directory
-# We avoid /app for now as /app will be the working directory for mcpo later.
+# Change working directory temporarily to clone metamcp source
 WORKDIR /
 RUN git clone https://github.com/metatool-ai/metamcp.git /metamcp_src
 
@@ -41,13 +48,13 @@ WORKDIR /metamcp_src
 
 # Install metamcp dependencies and build it
 # `--frozen-lockfile` is good practice for production builds
-# We assume `pnpm build` prepares the server for execution.
 RUN pnpm install --frozen-lockfile
 RUN pnpm build
 
 # --- End of Metamcp specific setup ---
 
 # Set the primary working directory back to /app for mcpo execution
+# The PATH already includes /app/.venv/bin from earlier.
 WORKDIR /app
 
 # Expose the port mcpo will listen on (default 8000)
@@ -59,5 +66,4 @@ ENV MCPO_PORT=8000
 
 # Command to run mcpo, passing the metamcp start command as the target MCP server.
 # mcpo will run metamcp as a child process and proxy its stdio to HTTP/OpenAPI.
-# We use `bash -c` to change directory into /metamcp_src and then execute `pnpm start`.
 CMD ["mcpo", "--port", "8000", "--api-key", "${MCPO_API_KEY}", "--", "bash", "-c", "cd /metamcp_src && pnpm start"]
