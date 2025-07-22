@@ -41,6 +41,5 @@ ENV MCPO_API_KEY="your-secret-mcpo-api-key"
 ENV MCPO_PORT=8000
 
 # Command to run mcpo, passing the context7-mcp startup command as the target MCP server.
-# mcpo will run 'npx @upstash/context7-mcp --transport stdio' as a child process
-# and proxy its standard I/O to an HTTP/OpenAPI endpoint.
-CMD ["mcpo", "--port", "${MCPO_PORT}", "--api-key", "${MCPO_API_KEY}", "--", "npx", "-y", "@upstash/context7-mcp", "--transport", "stdio"]
+# Using the shell form of CMD to allow environment variable expansion.
+CMD mcpo --port ${MCPO_PORT} --api-key ${MCPO_API_KEY} -- npx -y @upstash/context7-mcp --transport stdio
